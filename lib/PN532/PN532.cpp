@@ -383,7 +383,7 @@ bool PN532::ReadPassiveTargetIDB(byte* u8_UidBuffer, byte* pu8_UidLength)
     Waits for an ISO14443A target to enter the field.
     If the RF field has been turned off before, this command switches it on.
 
-    param u8_UidBuffer  Pointer to an 8 byte buffer that will be populated with the card's UID (4 or 7 bytes)
+    param u8_UidBuffer  Pointer to an 12 byte buffer that will be populated with the card's UID (4 or 7 bytes)
     param pu8_UidLength Pointer to the variable that will hold the length of the card's UID.
     param pe_CardType   Pointer to the variable that will hold if the card is a Desfire card
     
@@ -397,7 +397,7 @@ bool PN532::ReadPassiveTargetID(byte* u8_UidBuffer, byte* pu8_UidLength, eCardTy
       
     *pu8_UidLength = 0;
     *pe_CardType   = CARD_Unknown;
-    memset(u8_UidBuffer, 0, 8);
+    memset(u8_UidBuffer, 0, 12);
       
     mu8_PacketBuffer[0] = PN532_COMMAND_INLISTPASSIVETARGET;
     mu8_PacketBuffer[1] = 1;  // read data of 1 card (The PN532 can read max 2 targets at the same time)
@@ -438,7 +438,7 @@ bool PN532::ReadPassiveTargetID(byte* u8_UidBuffer, byte* pu8_UidLength, eCardTy
         return true; // no card found -> this is not an error!
 
     byte u8_IdLength = mu8_PacketBuffer[7];
-    if (u8_IdLength != 4 && u8_IdLength != 7)
+    if (u8_IdLength != 4 && u8_IdLength != 7 && u8_IdLength != 10)
     {
         Utils::Print("Card has unsupported UID length: ");
         Utils::PrintDec(u8_IdLength, LF); 
