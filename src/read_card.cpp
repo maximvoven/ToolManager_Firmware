@@ -25,22 +25,6 @@ bool read_rdif_get_id(PN532 rfid, char* uid, byte* uid_len){
         Utils::Print("ERROR: Failed to Communicate with RFID Reader");
         return false;
     }
-    // for (int i=0; i<*uid_len; i++){
-    //     if (uid_value[i] == 0xFF){
-    //         printf("Probable Error in Reading Card re-attempting %d of 4 times\r\n", attempt);
-    //         if(attempt<4){
-    //             attempt++;
-    //             rfid.SwitchOffRfField();
-    //             read_rdif_get_id(rfid, uid, uid_len);
-    //         } else {
-    //             Utils::Print("WARNING: Probable error reading card, attempts exhausated",LF);
-    //         }
-    //     }
-    // 
-    if(*uid_len>0){
-        rfid.SwitchOffRfField();
-        sleep(1);
-    }
     strcpy(uid, (const char*) &uid_value);
     return true;
 }

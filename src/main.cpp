@@ -3,11 +3,19 @@
 #include <PN532.h>
 #include "Utils.h"
 #include "read_card.h"
-#include "wifi_managment.h"
+// #include "WiFi.h"
+
 #include <iomanip>
 #include <sstream>
 #include <string>
 #include "main.h"
+
+#include "WiFi.h"
+#include "ArduinoJson-v6.21.3.h"
+
+static const char *TAG = "app";
+static const char *ssid = "ToolManageNet";
+static const char *pwd = "36969494";
 
 PN532 RF_Reader;
 struct timeval tv_now;
@@ -15,16 +23,8 @@ struct timeval tv_now;
 // "System Timer"
 int64_t time_us = 0;
 
-// Red Light
-int64_t event_time_1 = 0; 
-// Green Light
-int64_t event_time_2 = 0; 
-// Blue Light
-int64_t event_time_3 = 0; 
-// Buzzer
-int64_t event_time_4 = 0; 
-// Event Timer
-int64_t event_time_5 = 0; 
+
+
 
 
 /*
@@ -46,8 +46,21 @@ int state = 3;
 4: Reg, Green, Blue in Sequence - Virgin
 5: Authorized
 6: Not Authorized
+7: About to Lose authorization
 */
-int led_indicator_state = 4;
+int led_indicator_state = 0;
+// Flashing White Timer
+int64_t event_time_0 = 0;
+// Red White Flashing Light
+int64_t event_time_1 = 0; 
+// Green Light
+int64_t event_time_2 = 0; 
+// Light Timer Led State 7
+int64_t event_time_3 = 0; 
+// Buzzer
+int64_t event_time_4 = 0; 
+// Event Timer
+int64_t event_time_5 = 0; 
 
 
 int red = 0;
@@ -95,7 +108,7 @@ void setup() {
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN,1);
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN,1);
+  digitalWrite(RELAY_PIN,0);
 
   pinMode(9, INPUT);
   pinMode(10, INPUT);
@@ -107,9 +120,38 @@ void setup() {
   authorized_uid[3] = 0x67;
 
 
+  WiFi.mode(WIFI_STA);
+  int n = WiFi.scanNetworks();
+
+   if (n == 0) {
+        Serial.println("no networks found");
+    } else {
+        Serial.print(n);
+        Serial.println(" networks found");
+        for (int i = 0; i < n; ++i) {
+            // Print SSID and RSSI for each network found
+            Serial.print(i + 1);
+            Serial.print(": ");
+            Serial.print(WiFi.SSID(i));
+            Serial.print(" (");
+            Serial.print(WiFi.RSSI(i));
+            Serial.print(")");
+            Serial.println((WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"*");
+            delay(10);
+        }
+    }
+    Serial.println("");
+
+  bool provisioned = false;
+  printf("Provisioned State %d\r\n",provisioned);
+  if(provisioned){
+    state = 1;
+    led_indicator_state = 2;
+  }
+
   // memset(_prevIDm, 0, 8);
 }
-
+int status = WL_IDLE_STATUS;
 void loop() {
   gettimeofday(&tv_now, NULL);
   time_us  = (int64_t)tv_now.tv_sec * 1000000L + (int64_t)tv_now.tv_usec;
@@ -120,53 +162,73 @@ void loop() {
   // 3: Connected Waiting for ID
   // 4: ID Accepted: Tool State Set to Desired State
   // 5: Lockout (Waiting For Special ID) - Service or Web Design
-  printf("Main System Loop\n\r");
+  // printf("Main System Loop\n\r");
 
   if(state==0){
-    printf("System Initialized: Waiting for Provisioning\n\r");
-
+    led_indicator_state = 0;
+    //TODO Add wifi Provisioning Capability
+    printf("Credentials are Hardcoded going to Next State\r\n");
+    state =1;
   }
 
   if(state==1){
+    //TODO Migrate to IDF Wifi Library
     printf("Connecting to Wifi\n\r");
+    led_indicator_state = 2;
+    status = WiFi.begin(ssid,pwd);
+    printf("Wifi Status %d\r\n", status);
+    Serial.print("Connecting to WiFi ..");
+    while (WiFi.status() != WL_CONNECTED) {
+      Serial.print('.');
+      delay(1000);
+    }
+    state = 2;
   }
 
   if(state==2){
-    printf("Connecting to Server\n\r");
+    printf("_____ Connecting to Server _____\n\r");
+    led_indicator_state = 3;
+    StaticJsonDocument<200> doc;
   }
 
   if (state==3){
-    printf("Waiting for Authentication \n\r");
+    printf("_____ Waiting for Authentication _____\n\r");
+    relay = 0;
     led_indicator_state = 6;
-    boolean success;
-    char* uid = new char[64];
-    byte uid_len;
-    success = read_rdif_get_id(RF_Reader, uid, &uid_len);
-    Serial.print("UID Value: ");
-    for (uint8_t i=0; i < uid_len; i++) 
-      {
-        Serial.print(" 0x");Serial.print(uid[i], HEX); 
+    if (time_us > event_time_5){
+      event_time_5 = time_us + 100000L; // 100ms Loop
+      boolean success;
+      char* uid = new char[64];
+      byte uid_len;
+      success = read_rdif_get_id(RF_Reader, uid, &uid_len);
+      Serial.print("UID Value: ");
+      for (uint8_t i=0; i < uid_len; i++) 
+        {
+          Serial.print(" 0x");Serial.print(uid[i], HEX); 
+        }
+      Serial.print("\r\n");
+      if(success 
+      && authorized_uid[0]==uid[0]
+      && authorized_uid[1]==uid[1]
+      && authorized_uid[2]==uid[2]
+      && authorized_uid[3]==uid[3]){
+        state = 4;
+        event_time_5=0;
       }
-    Serial.print("\r\n");
-    if(success 
-    && authorized_uid[0]==uid[0]
-    && authorized_uid[1]==uid[1]
-    && authorized_uid[2]==uid[2]
-    && authorized_uid[3]==uid[3]){
-      state = 4;
     }
   }
 
   if(state==4){
-    printf("Access Authorized\n\r");
+    printf("_____ Access Authorized _____\n\r");
     static int failed_measurments = 0;
     led_indicator_state = 5;
+    relay = 1;
     if (time_us > event_time_5){
         boolean success;
         char* uid = new char[64];
         byte uid_len;
         failed_measurments++;
-        event_time_5 = time_us + 1000000L;
+        event_time_5 = time_us + 1000000L; // 1 Second Loop
         success = read_rdif_get_id(RF_Reader, uid, &uid_len);
         if(success){
           Serial.print("UID Value: 0x");
@@ -185,26 +247,81 @@ void loop() {
           }
         }
     }
-    if(failed_measurments>30){
+    if(failed_measurments>5){
+      led_indicator_state = 7;
+    }
+    if(failed_measurments>20){
       state = 3;
+      event_time_5 = 0;
+      failed_measurments =0;
     }
 
   }
+  
   if(state==5){
     printf("Lockout Mode\n\r");
   }
 
+  if(state>5){
+    state = 3;
+  }
+
+  if(led_indicator_state == 0){
+    if(time_us>event_time_0){
+      if(blue>0){
+        blue = 0;
+      }else{
+        blue = 1;
+      }
+      event_time_0 = time_us + 200000;
+    }
+  }
+
   // Led Indicator Blinking Code
+  if(led_indicator_state == 0){
+    blue =1;
+    green = 0;
+    red = 0;
+  }
+  if(led_indicator_state == 2){
+    red =1;
+    green = 0;
+    blue = 1;
+  }
+  if(led_indicator_state == 3){
+    red =1;
+    green = 1;
+    blue = 1;
+  }
   if(led_indicator_state==5){
     green = 1;
     red = 0;
     blue = 0;
   }
+
   if(led_indicator_state==6){
     green = 0;
-    red = 0;
-    blue = 1;
+    red = 1;
+    blue = 0;
   }
+
+  if(led_indicator_state==7){
+    static int blink_state_7 = 0;
+    if(time_us>event_time_3){
+      if(blink_state_7>0){
+        blink_state_7 = 0;
+        green = 1;
+        red = 0;
+      }else{
+        blink_state_7 = 1;
+        green = 0;
+        red = 1;
+      }
+      event_time_3 = time_us + 200000;
+    }
+
+  }
+
   digitalWrite(GREEN_LED_PIN, green);
   digitalWrite(RED_LED_PIN, red);
   digitalWrite(BLUE_LED_PIN, blue);
